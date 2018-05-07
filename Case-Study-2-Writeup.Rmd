@@ -1,0 +1,10 @@
+---
+title: "Case Study 2"
+author: "Elliot Pickens & Matt Thill"
+date: "May 6, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
