@@ -8,3 +8,235 @@ output: pdf_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+## Load the Libraries
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(Sleuth3)
+library(dplyr)
+library(ggformula)
+library(pander)
+library(knitr)
+library(stargazer)
+library(car)
+library(pander)
+library(gridExtra)
+library(broom)
+library(ggthemes)
+library(MASS)
+library(leaps)
+library(GGally)
+```
+
+## Load the Data
+
+```{r}
+data(ex1217)
+```
+
+## Do an Initial Inspection of the Data
+
+```{r}
+head(ex1217)
+
+sum(is.na(ex1217))
+
+ggpairs(ex1217[,3:17],
+        upper = list(continuous = wrap("points", alpha = 0.3)),
+        diag = list(continuous = "densityDiag"),
+        lower = list(continuous = "cor"))
+
+
+summary(ex1217$Mortality)
+sd(ex1217$Mortality)
+
+summary(ex1217$NOX)
+sd(ex1217$NOX)
+
+summary(ex1217$SO2)
+sd(ex1217$SO2)
+
+```
+
+I first printed out the head of the dataset to see what I was working with. Then I checked the data to see if there were any "na" values. In this case there were no "na" values in the data so I did not have to remove or otherwise deal with any bad data. Lastly I plotted the data to see if I could make any visual inferences. It is admittedly somewhat difficult to interpret, but if you squint your eyes and looks closely it looks as if HC and NOX, and JanTemp and JulyTemp may be related. I also inspected SO2 and 
+
+## Build and check the full model
+
+```{r}
+lm.full <- lm(Mortality ~ NOX + SO2 +  HC + WhiteCol + NonWhite + Density + Sound +Educ + House + Over65 + JulyTemp + JanTemp + Humidity + Precip, data = ex1217)
+
+vif(lm.full)
+
+g1 <- gf_point(HC ~ SO2, data = ex1217)
+g2 <- gf_point(HC ~ NOX, data = ex1217)
+g3 <- gf_point(NOX ~ SO2, data = ex1217)
+grid.arrange(g1, g2, g3, ncol = 2)
+
+crPlots(lm.full, layout = c(3, 4))
+
+lm.upper <- lm(Mortality ~ NOX + SO2 + WhiteCol + NonWhite + Density + Sound +Educ + House + Over65 + JulyTemp + JanTemp + Humidity + Precip, data = ex1217)
+
+vif(lm.upper)
+
+
+
+```
+
+I then built a full model to check whether or not it was valid. I used a full model which includes each of the features to the power of one, so I'm not building a fully saturated model (one where the feature space is expanded using features raised to powers greater than 1 or interaction variables). 
+
+Once the full model had been fit I checked for colinearity using vif as an indicator. The VIF scores for the different features used in the full model show that there is a clear problem with colinearity. The VIF of NOX is nearly 105 and the VIF of HC is 98, two values that are well above our colinearity thresholds. It should also be noted that NonWhite has a VIF of ~5 and Over65 has a VIF of ~6.5, which may indicate that there are colinearity problems other than that of NOX and HC.
+
+To check the colinerity between NOX and HC I made a few scatterplots to visualize the data. Unsurprisingly they show a clear relationship between NOX and HC.
+
+## Stepwise Selection
+
+```{r}
+lm.basic <- lm(Mortality ~ NOX + SO2, data = ex1217)
+
+stepfwd <- stepAIC(lm.basic, scope = list(lower = ~NOX + SO2, upper = ~Mortality ~ NOX + SO2 +  HC + WhiteCol + NonWhite + Density + Sound +Educ + House + Over65 + JulyTemp + JanTemp + Humidity + Precip),
+                   direction = "both")
+
+summary(stepfwd)
+
+residualPlots(stepfwd)
+
+
+```
+
+Then using NOX + SO2 as a base case (seeing as we are using NOX and SO2 to predict Mortality) use forward selection to select a model.
+
+```{r}
+
+
+stepBk <- stepAIC(lm.full, scope = list(lower = ~NOX + SO2, upper = ~Mortality ~ NOX + SO2 +  HC + WhiteCol + NonWhite + Density + Sound +Educ + House + Over65 + JulyTemp + JanTemp + Humidity + Precip),
+                   direction = "both")
+
+summary(stepBk)
+
+residualPlots(stepBk)
+
+```
+
+Once again using NOX + SO2 as a base case use backwards selection to select a model starting from the full model.
+
+Both of these methods are moving in both directions.
+
+```{r, results='asis'}
+stargazer(stepBk, header = FALSE)
+```
+
+Interestingly enough our models from forward and backwards selection are the same.
+
+## Check for outliers and colinearity
+
+```{r}
+vif(stepBk)
+
+g4 <- gf_point(JulyTemp ~ JanTemp, data = ex1217)
+g5 <- gf_point(Educ ~ NonWhite, data = ex1217)
+g6 <- gf_point(House ~ NonWhite, data = ex1217)
+grid.arrange(g4, g5, g6, ncol = 2)
+
+infIndexPlot(stepBk, id = list(n = 3))
+
+aug1 <- augment(stepBk) %>%
+mutate(.rownames = 1:60)
+gf_point(.hat ~ .rownames, data = aug1) %>%
+gf_labs(x = "Index", y = "Leverage") 
+
+newData <- ex1217[-c(7, 60), ]
+
+cur.mod = lm(Mortality ~ NOX + SO2 + House + Precip + Educ + NonWhite + JulyTemp + JanTemp, data = newData)
+summary(cur.mod)
+
+infIndexPlot(cur.mod, id = list(n = 3))
+
+aug2 <- augment(cur.mod) %>%
+mutate(.rownames = 1:58)
+gf_point(.hat ~ .rownames, data = aug2) %>%
+gf_labs(x = "Index", y = "Leverage") 
+
+newerData <- newData[-c(4), ]
+
+cur.mod = lm(Mortality ~ NOX + SO2 + House + Precip + Educ + NonWhite + JulyTemp + JanTemp, data = newerData)
+summary(cur.mod)
+
+infIndexPlot(cur.mod, id = list(n = 3))
+
+aug3 <- augment(cur.mod) %>%
+mutate(.rownames = 1:57)
+gf_point(.hat ~ .rownames, data = aug3) %>%
+gf_labs(x = "Index", y = "Leverage") 
+```
+
+I did not see any problems with colinearity, but I did remove a couple of points with high-ish cooks distances after flagging them aa potential outliers 
+
+```{r, results='asis'}
+stargazer(cur.mod, header = FALSE)
+
+```
+
+## Check transformations and simplier models
+
+```{r}
+log.mod = lm(Mortality ~ log(NOX) + SO2 + House + Precip + Educ + NonWhite + JulyTemp + JanTemp, data = newerData)
+summary(log.mod)
+
+residualPlots(log.mod)
+
+vif(log.mod)
+```
+
+I tried to log transform NOX after previously noting that its residual plot looked slightly skewed, but after fitting the transformed model we are left with something that is simply not as good as the previous model as is indicated by both the increased VIF scores and what is potentially greater skew in the NonWhite Residual plot. Overall I saw no benefits from this more complex model, so I chose not to use it.
+
+##  Can We Simplify ????
+
+```{r}
+jan.mod = lm(Mortality ~ NOX + SO2 + House + Precip + Educ + NonWhite + JanTemp, data = newerData)
+summary(jan.mod)
+
+residualPlots(jan.mod)
+
+vif(jan.mod)
+
+simple.mod = lm(Mortality ~ NOX + SO2 + Educ + Precip + NonWhite + JanTemp, data = newerData)
+summary(simple.mod)
+
+residualPlots(simple.mod)
+
+vif(simple.mod)
+
+simpler.mod = lm(Mortality ~ NOX + SO2 + Precip + NonWhite + JanTemp, data = newerData)
+summary(simple.mod)
+
+residualPlots(simpler.mod)
+
+vif(simpler.mod)
+
+```
+
+Finally I attemped to manually alter our finally model to see if we could achieve a model that maintained some of the power of the more complex model while reducing the number of terms used. It looks as if this may be possible using just Precip, NonWhite, JanTemp, SO2, and NOX. I first removed July temp because even though there is not strong evidence of a important relationship bewteen July Temp and Jan Temp, I wanted to see if we could remove one. The resulting model looked okay so I then removed House and then Educ to create a very simple model. Although, further investigation is required it looks as if this simple model may have at least some degree of usefulness indicating that Mortality may be most strongly driven by only a few variables. 
+
+Also, it is important to note that throughout the model fitting process NOX has not been particuallary useful as a predictor.
+
+```{r}
+so2.mod = lm(Mortality ~ SO2 + House + Precip + Educ + NonWhite + JulyTemp + JanTemp, data = newerData)
+summary(so2.mod)
+
+infIndexPlot(so2.mod, id = list(n = 3))
+
+aug4 <- augment(so2.mod) %>%
+mutate(.rownames = 1:57)
+gf_point(.hat ~ .rownames, data = aug4) %>%
+gf_labs(x = "Index", y = "Leverage") 
+```
+
+
+
+
+
+
+
+
+
+

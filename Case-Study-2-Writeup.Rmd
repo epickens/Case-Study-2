@@ -8,3 +8,65 @@ output: pdf_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(Sleuth3)
+library(dplyr)
+library(ggformula)
+library(pander)
+library(knitr)
+library(stargazer)
+library(car)
+library(pander)
+library(gridExtra)
+library(broom)
+library(ggthemes)
+library(MASS)
+library(leaps)
+library(GGally)
+
+```
+
+```{r}
+data(ex1217)
+```
+
+
+```{r}
+head(ex1217)
+sum(is.na(ex1217))
+ggpairs(ex1217[,3:17],
+        upper = list(continuous = wrap("points", alpha = 0.3)),
+        diag = list(continuous = "densityDiag"),
+        lower = list(continuous = "cor"))
+
+lm.basic <- lm(Mortality ~ NOX + SO2, data = ex1217)
+
+stepfwd <- stepAIC(lm.basic, scope = list(lower = ~1, upper = ~Mortality ~ NOX + SO2 +  HC + WhiteCol + NonWhite + Density + Sound +Educ + House + Over65 + JulyTemp + JanTemp + Humidity + Precip),
+                   direction = "both")
+
+summary(stepfwd)
+
+lm.full <- lm(Mortality ~ NOX + SO2 +  HC + WhiteCol + NonWhite + Density + Sound +Educ + House + Over65 + JulyTemp + JanTemp + Humidity + Precip, data = ex1217)
+
+stepBk <- stepAIC(lm.full, scope = list(lower = ~1, upper = ~Mortality ~ NOX + SO2 +  HC + WhiteCol + NonWhite + Density + Sound +Educ + House + Over65 + JulyTemp + JanTemp + Humidity + Precip),
+                   direction = "both")
+
+summary(stepBk)
+
+residualPlots(stepBk)
+
+
+```
+
+```{r}
+regfit.full = regsubsets(Mortality ~ ., data = ex1217, nvmax = 15, nbest = 2, method = "replacement")
+
+```
+
+
+```{r}
+
+```
+
+
